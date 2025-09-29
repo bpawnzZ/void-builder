@@ -265,26 +265,55 @@ jobs:
 
       - name: Release
         env:
-          GITHUB_TOKEN: ${{ secrets.STRONGER_GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_USERNAME: ${{ github.repository_owner }}
         run: ./release.sh
         if: env.DISABLED != 'yes' && env.SHOULD_BUILD == 'yes' && env.SHOULD_DEPLOY == 'yes'
 
-      - name: Update versions repo
-        env:
-          FORCE_UPDATE: ${{ github.event.inputs.force_version }}
-          GITHUB_TOKEN: ${{ secrets.STRONGER_GITHUB_TOKEN }}
-          GITHUB_USERNAME: ${{ github.repository_owner }}
-        run: ./update_version.sh
-        if: env.DISABLED != 'yes' && env.SHOULD_BUILD == 'yes' && env.SHOULD_DEPLOY == 'yes'
-
-      - name: Upload assets
+      - name: Upload packages to GitHub Packages
         uses: actions/upload-artifact@v4
         with:
-          name: bin-${{ matrix.vscode_arch }}
+          name: void-packages-${{ matrix.vscode_arch }}
           path: assets/
-          retention-days: 3
-        if: env.DISABLED != 'yes' && env.SHOULD_BUILD == 'yes' && env.SHOULD_DEPLOY == 'no' && github.event.inputs.generate_assets == 'true'
+          retention-days: 30
+          if: env.DISABLED != 'yes' && env.SHOULD_BUILD == 'yes' && (env.SHOULD_DEPLOY == 'yes' || github.event.inputs.generate_assets == 'true')
+
+      - name: Publish to GitHub Packages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PACKAGE_REGISTRY_URL: ${{ github.api_url }}/packages/void-builder
+        run: |
+          # Generate package manifest
+          cat > package-manifest.json << EOF
+          {
+            "name": "void-${{ matrix.vscode_arch }}",
+            "version": "${{ env.RELEASE_VERSION }}",
+            "description": "Void editor for Linux ${{ matrix.vscode_arch }}",
+            "architecture": "${{ matrix.vscode_arch }}",
+            "platform": "linux",
+            "quality": "${{ env.VSCODE_QUALITY }}"
+          }
+          EOF
+
+          # Upload assets as packages
+          for asset in assets/*; do
+            if [[ -f "$asset" ]] && [[ "$asset" != *.sha* ]]; then
+              filename=$(basename "$asset")
+              echo "Uploading $filename to GitHub Packages"
+
+              # Create package metadata
+              package_name="void-${{ matrix.vscode_arch }}"
+              version="${{ env.RELEASE_VERSION }}"
+
+              # Upload to GitHub Packages API
+              curl -X PUT \
+                -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                -H "Content-Type: application/octet-stream" \
+                -T "$asset" \
+                "${PACKAGE_REGISTRY_URL}/void-${{ matrix.vscode_arch }}/${version}/${filename}"
+            fi
+          done
+        if: env.DISABLED != 'yes' && env.SHOULD_BUILD == 'yes' && env.SHOULD_DEPLOY == 'yes'
 
   reh_linux:
     needs:
@@ -393,13 +422,34 @@ jobs:
         run: ./release.sh
         if: env.DISABLED != 'yes' && env.SHOULD_DEPLOY == 'yes' && (env.SHOULD_BUILD_REH != 'no' || env.SHOULD_BUILD_REH_WEB != 'no')
 
-      - name: Upload assets
+      - name: Upload REX Linux assets
         uses: actions/upload-artifact@v4
         with:
           name: reh-linux-${{ matrix.vscode_arch }}
           path: assets/
           retention-days: 3
-        if: env.DISABLED != 'yes' && env.SHOULD_DEPLOY == 'no' && github.event.inputs.generate_assets == 'true'
+        if: env.DISABLED != 'yes' && (env.SHOULD_DEPLOY == 'no' || github.event.inputs.generate_assets == 'true')
+
+      - name: Publish REX Linux to GitHub Packages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PACKAGE_REGISTRY_URL: ${{ github.api_url }}/packages/void-builder
+        run: |
+          # Upload REX Linux assets to GitHub Packages
+          for asset in assets/*; do
+            if [[ -f "$asset" ]] && [[ "$asset" != *.sha* ]]; then
+              filename=$(basename "$asset")
+              echo "Uploading REX Linux $filename to GitHub Packages"
+
+              # Upload to GitHub Packages API
+              curl -X PUT \
+                -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                -H "Content-Type: application/octet-stream" \
+                -T "$asset" \
+                "${PACKAGE_REGISTRY_URL}/void-reh-linux-${{ matrix.vscode_arch }}/${{ env.RELEASE_VERSION }}/${filename}"
+            fi
+          done
+        if: env.DISABLED != 'yes' && env.SHOULD_DEPLOY == 'yes'
 
   reh_alpine:
     needs:
@@ -478,13 +528,34 @@ jobs:
         run: ./release.sh
         if: env.DISABLED != 'yes' && env.SHOULD_DEPLOY == 'yes' && (env.SHOULD_BUILD_REH != 'no' || env.SHOULD_BUILD_REH_WEB != 'no')
 
-      - name: Upload assets
+      - name: Upload Alpine REX assets
         uses: actions/upload-artifact@v4
         with:
           name: reh-alpine-${{ matrix.vscode_arch }}
           path: assets/
           retention-days: 3
-        if: env.DISABLED != 'yes' && env.SHOULD_DEPLOY == 'no' && github.event.inputs.generate_assets == 'true'
+        if: env.DISABLED != 'yes' && (env.SHOULD_DEPLOY == 'no' || github.event.inputs.generate_assets == 'true')
+
+      - name: Publish Alpine REX to GitHub Packages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PACKAGE_REGISTRY_URL: ${{ github.api_url }}/packages/void-builder
+        run: |
+          # Upload Alpine REX assets to GitHub Packages
+          for asset in assets/*; do
+            if [[ -f "$asset" ]] && [[ "$asset" != *.sha* ]]; then
+              filename=$(basename "$asset")
+              echo "Uploading Alpine REX $filename to GitHub Packages"
+
+              # Upload to GitHub Packages API
+              curl -X PUT \
+                -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                -H "Content-Type: application/octet-stream" \
+                -T "$asset" \
+                "${PACKAGE_REGISTRY_URL}/void-reh-alpine-${{ matrix.vscode_arch }}/${{ env.RELEASE_VERSION }}/${filename}"
+            fi
+          done
+        if: env.DISABLED != 'yes' && env.SHOULD_DEPLOY == 'yes'
 
   # Void commented this out:
   # aur:
